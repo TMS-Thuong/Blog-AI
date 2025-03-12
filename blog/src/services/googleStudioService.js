@@ -14,7 +14,10 @@ async function generateContent(prompt) {
             headers: { 'Content-Type': 'application/json' }
         });
 
-        return response.data;
+        const textContent =
+            response.data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (!textContent) throw new Error("Response không chứa nội dung hợp lệ!");
+        return textContent;
     } catch (error) {
         console.error("Error calling Google Gemini API:", error.response?.data || error.message);
         throw new Error("Failed to fetch response from Gemini API.");
