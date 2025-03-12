@@ -3,10 +3,13 @@
     "axios": "^1.8.2",
     "body-parser": "^1.20.3",
     "cheerio": "^1.0.0",
+    "commander": "^13.1.0",
     "cors": "^2.8.5",
+    "csv-parser": "^3.2.0",
     "dotenv": "^16.4.7",
     "emoji-dictionary": "^1.0.12",
     "express": "^4.21.2",
+    "multer": "^1.4.5-lts.1",
     "natural": "^8.0.1",
     "puppeteer": "^24.4.0",
     "stopword": "^3.1.4"
@@ -22,5 +25,8 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": ""
+  "description": "",
+  "bin": {
+    "bloggen": "./src/cli/cli.js"
+  }
 }

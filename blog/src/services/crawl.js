@@ -20,9 +20,7 @@ function preprocessText(text) {
     text = text.replace(/[\u{1F600}-\u{1F64F}]/gu, (match) => emoji.getName(match) || match);
     // 6. Tách từ (Tokenizing) để phân chia văn bản thành các từ riêng lẻ
     let tokens = tokenizer.tokenize(text);
-    // 7. Loại bỏ các từ dừng (Stop Words) như "the", "is", "and",... 
-    tokens = stopword.removeStopwords(tokens);
-    // 8. Chuẩn hóa từ bằng phương pháp Stemming (chuyển về gốc của từ)
+    // 8. Chuẩn hóa từ bằng phương pháp Stemming
     tokens = tokens.map(word => stemmer.stem(word));
     // 9. Kết hợp lại thành văn bản đã được tiền xử lý
     return tokens.join(' ');
@@ -31,8 +29,7 @@ function preprocessText(text) {
 // Hàm sử dụng Puppeteer để crawl nội dung
 async function fetchArticleContent(url) {
     const browser = await puppeteer.launch({
-        headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        headless: false
     });
 
     const page = await browser.newPage();
