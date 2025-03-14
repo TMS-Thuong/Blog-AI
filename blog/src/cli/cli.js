@@ -7,7 +7,8 @@ const { fetchArticleContent } = require("../services/crawl");
 const { generateContent } = require("../services/googleStudioService");
 const pool = require("../../config/db");
 const { processCSV } = require("../api/controllers/blogController");
-
+const { Worker } = require("worker_threads");
+const path = require("path");
 const program = new Command();
 
 program
@@ -101,6 +102,7 @@ program
                                                 LEFT JOIN categories c ON p.category_id = c.id
                                                 ORDER BY p.created_at DESC
                                             `);
+            console.log("DEBUG - Kết quả truy vấn:", result.rows);
             const rows = result.rows;
 
             if (rows.length === 0) {
@@ -124,10 +126,90 @@ program
         }
     });
 // 2.3.bloggen batch < csv - file >: Xử lý hàng loạt từ file CSV
+// program
+//     .command("batch <csvFile>")
+//     .description("Xử lý hàng loạt bài viết từ file CSV")
+//     .action(async (csvFile) => {
+//         try {
+//             console.log(`Đọc file CSV: ${csvFile}`);
+//             const articles = await processCSV(csvFile);
+//             if (articles.length === 0) {
+//                 console.log("Không có dữ liệu trong file CSV.");
+//                 return;
+//             }
+
+//             const client = await pool.connect();
+//             try {
+//                 await client.query("BEGIN");
+
+//                 // Lấy danh sách danh mục trước
+//                 const categoryResults = await client.query("SELECT id, name FROM categories");
+//                 const categoryMap = new Map(categoryResults.rows.map(row => [row.name, row.id]));
+
+//                 for (const article of articles) {
+//                     const { category, url, style } = article;
+//                     if (!category || !url || !style) {
+//                         console.warn("Bỏ qua dòng bị lỗi:", article);
+//                         continue;
+//                     }
+
+//                     // Xử lý category
+//                     let categoryId = categoryMap.get(category);
+//                     if (!categoryId) {
+//                         const insertCategory = await client.query(
+//                             "INSERT INTO categories (name) VALUES ($1) RETURNING id",
+//                             [category]
+//                         );
+//                         categoryId = insertCategory.rows[0].id;
+//                         categoryMap.set(category, categoryId);
+//                     }
+
+//                     // Crawl nội dung
+//                     let title = "";
+//                     let content = "";
+//                     try {
+//                         ({ title, content } = await fetchArticleContent(url));
+//                     } catch (error) {
+//                         console.error(`Lỗi khi crawl dữ liệu từ ${url}:`, error);
+//                         continue;
+//                     }
+
+//                     if (!content || content.length < 100) {
+//                         console.warn(`Bỏ qua bài viết có nội dung quá ngắn: ${title}`);
+//                         continue;
+//                     }
+//                     const rewrittenContent = await generateContent({ title, content, style });
+//                     if (!rewrittenContent) {
+//                         console.error(`AI Service không thể viết lại bài: ${title}`);
+//                         continue;
+//                     }
+//                     console.log("Nội dung viết lại:", rewrittenContent);
+//                     // Lưu vào database
+//                     await client.query(
+//                         "INSERT INTO posts (title, content, category_id, created_at) VALUES ($1, $2, $3, NOW())",
+//                         [title, rewrittenContent, categoryId]
+//                     );
+
+//                     console.log('Bài viết đã được xử lý và lưu.');
+//                 }
+
+//                 await client.query("COMMIT");
+//                 console.log("Hoàn thành xử lý tất cả bài viết.");
+//             } catch (error) {
+//                 await client.query("ROLLBACK");
+//                 console.error("Lỗi khi lưu bài viết:", error);
+//             } finally {
+//                 client.release();
+//             }
+//         } catch (error) {
+//             console.error("Lỗi hệ thống:", error);
+//         }
+//     });
 program
     .command("batch <csvFile>")
     .description("Xử lý hàng loạt bài viết từ file CSV")
-    .action(async (csvFile) => {
+    .option("--workers <count>", "Số worker tối đa chạy đồng thời", "3")
+    .action(async (csvFile, options) => {
         try {
             console.log(`Đọc file CSV: ${csvFile}`);
             const articles = await processCSV(csvFile);
@@ -136,69 +218,43 @@ program
                 return;
             }
 
-            const client = await pool.connect();
-            try {
-                await client.query("BEGIN");
+            const maxWorkers = parseInt(options.workers, 10);
+            let activeWorkers = 0;
+            let index = 0;
 
-                // Lấy danh sách danh mục trước
-                const categoryResults = await client.query("SELECT id, name FROM categories");
-                const categoryMap = new Map(categoryResults.rows.map(row => [row.name, row.id]));
+            function startWorker(article) {
+                return new Promise((resolve, reject) => {
+                    const worker = new Worker(path.join(__dirname, "worker.js"), { workerData: article });
 
-                for (const article of articles) {
-                    const { category, url, style } = article;
-                    if (!category || !url || !style) {
-                        console.warn("Bỏ qua dòng bị lỗi:", article);
-                        continue;
-                    }
+                    worker.on("message", (result) => {
+                        console.log(`Worker hoàn thành: ${result.url} -> ${result.status}`);
+                        resolve();
+                    });
 
-                    // Xử lý category
-                    let categoryId = categoryMap.get(category);
-                    if (!categoryId) {
-                        const insertCategory = await client.query(
-                            "INSERT INTO categories (name) VALUES ($1) RETURNING id",
-                            [category]
-                        );
-                        categoryId = insertCategory.rows[0].id;
-                        categoryMap.set(category, categoryId);
-                    }
-
-                    // Crawl nội dung
-                    let title = "";
-                    let content = "";
-                    try {
-                        ({ title, content } = await fetchArticleContent(url));
-                    } catch (error) {
-                        console.error(`Lỗi khi crawl dữ liệu từ ${url}:`, error);
-                        continue;
-                    }
-
-                    if (!content || content.length < 100) {
-                        console.warn(`Bỏ qua bài viết có nội dung quá ngắn: ${title}`);
-                        continue;
-                    }
-                    const rewrittenContent = await generateContent({ title, content, style });
-                    if (!rewrittenContent) {
-                        console.error(`AI Service không thể viết lại bài: ${title}`);
-                        continue;
-                    }
-                    console.log("Nội dung viết lại:", rewrittenContent);
-                    // Lưu vào database
-                    await client.query(
-                        "INSERT INTO posts (title, content, category_id, created_at) VALUES ($1, $2, $3, NOW())",
-                        [title, rewrittenContent, categoryId]
-                    );
-
-                    console.log('Bài viết đã được xử lý và lưu.');
-                }
-
-                await client.query("COMMIT");
-                console.log("Hoàn thành xử lý tất cả bài viết.");
-            } catch (error) {
-                await client.query("ROLLBACK");
-                console.error("Lỗi khi lưu bài viết:", error);
-            } finally {
-                client.release();
+                    worker.on("error", reject);
+                    worker.on("exit", (code) => {
+                        if (code !== 0) {
+                            reject(new Error(`Worker exited with code ${code}`));
+                        }
+                    });
+                });
             }
+
+            async function processBatch() {
+                while (index < articles.length) {
+                    if (activeWorkers < maxWorkers) {
+                        const article = articles[index++];
+                        activeWorkers++;
+
+                        startWorker(article)
+                            .then(() => activeWorkers--)
+                            .catch((err) => console.error("Worker error:", err))
+                            .finally(() => processBatch());
+                    }
+                }
+            }
+
+            processBatch();
         } catch (error) {
             console.error("Lỗi hệ thống:", error);
         }

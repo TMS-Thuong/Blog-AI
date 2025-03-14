@@ -20,7 +20,7 @@ function preprocessText(text) {
 
 async function fetchArticleContent(url) {
     const browser = await puppeteer.launch({
-        headless: false
+        headless: true
     });
 
     try {
