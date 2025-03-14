@@ -26,6 +26,7 @@ async function rewriteArticle(req, res) {
 
         const filePath = req.file.path;
         const articles = await processCSV(filePath);
+        fs.unlinkSync(filePath);
         if (articles.length === 0) {
             return res.status(400).json({ error: "Không có dữ liệu trong file CSV" });
         }
@@ -34,17 +35,11 @@ async function rewriteArticle(req, res) {
         try {
             await client.query("BEGIN");
 
-            // Load tất cả categories trước
             const categoryResults = await client.query("SELECT id, name FROM categories");
             const categoryMap = new Map(categoryResults.rows.map(row => [row.name, row.id]));
 
             const responseArticles = await Promise.allSettled(articles.map(async (article) => {
                 const { category, url, style } = article;
-                if (!category || !url || !style) {
-                    console.warn("Bỏ qua dòng bị lỗi:", article);
-                    return null;
-                }
-
                 let categoryId = categoryMap.get(category);
                 if (!categoryId) {
                     const insertCategory = await client.query(
@@ -57,6 +52,7 @@ async function rewriteArticle(req, res) {
 
                 let title = "";
                 let content = "";
+
                 try {
                     ({ title, content } = await fetchArticleContent(url));
                 } catch (error) {
@@ -69,18 +65,17 @@ async function rewriteArticle(req, res) {
                     return null;
                 }
 
-                const aiPrompt = `Bạn là content creater chuyên nghiệp với 50 năm kinh nghiệm. Nhiệm vụ của bạn là hãy viết lại bài có tiêu đề: "${title}" theo phong cách ${style}.
-                            Yêu cầu:                                 
-                            1. Giữ nguyên ý chính và thông tin quan trọng                                 
-                            2. Thay đổi cách diễn đạt để phù hợp với phong cách ${style}                                 
-                            3. Đảm bảo bài viết mạch lạc, rõ ràng và hấp dẫn                                 
-                            4. Giữ nguyên độ dài tương đối so với bài gốc                                 
-                            Nội dung bài viết gốc: ${content}`;
-                const rewrittenContent = await aiService.generateContent(aiPrompt);
+                const rewrittenContent = await aiService.generateContent({ title, content, style });
+                console.log("Nội dung viết lại:", rewrittenContent);
+
                 if (!rewrittenContent) {
                     console.error(`AI Service không thể viết lại bài: ${title}`);
                     return null;
                 }
+                if (!title || title.trim() === "") {
+                    title = "Tiêu đề chưa có";
+                }
+                // console.log("DEBUG: ", { title, rewrittenContent, categoryId });
 
                 const insertPostQuery = `INSERT INTO posts (title, content, category_id) VALUES ($1, $2, $3) RETURNING id`;
                 const postResult = await client.query(insertPostQuery, [title, rewrittenContent, categoryId]);
@@ -92,7 +87,6 @@ async function rewriteArticle(req, res) {
                     category
                 };
             }));
-
 
             await client.query("COMMIT");
             res.json({
@@ -116,8 +110,6 @@ async function rewriteArticle(req, res) {
 async function getPosts(req, res) {
     try {
         const { page = 1, limit = 10 } = req.query;
-
-        // Chuyển đổi về kiểu số nguyên
         const pageNum = parseInt(page, 10);
         const limitNum = parseInt(limit, 10);
         const offset = (pageNum - 1) * limitNum;
@@ -126,7 +118,6 @@ async function getPosts(req, res) {
             const countResult = await client.query("SELECT COUNT(*) FROM posts");
             const totalCount = parseInt(countResult.rows[0].count, 10);
 
-            // Lấy danh sách bài viết theo phân trang
             const query = `
                 SELECT p.id, p.title, p.content, c.name AS category, p.created_at
                 FROM posts p
@@ -196,4 +187,4 @@ async function searchPosts(req, res) {
 }
 
 
-module.exports = { upload, rewriteArticle, getPosts, searchPosts };
+module.exports = { upload, rewriteArticle, getPosts, searchPosts, processCSV };
