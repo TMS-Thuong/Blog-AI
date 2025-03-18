@@ -1,0 +1,39 @@
+{
+  "dependencies": {
+    "@google/generative-ai": "^0.24.0",
+    "axios": "^1.8.3",
+    "body-parser": "^1.20.3",
+    "chalk": "^5.4.1",
+    "cheerio": "^1.0.0",
+    "commander": "^13.1.0",
+    "cors": "^2.8.5",
+    "cron": "^4.1.0",
+    "csv-parser": "^3.2.0",
+    "dotenv": "^16.4.7",
+    "emoji-dictionary": "^1.0.12",
+    "express": "^4.21.2",
+    "express-rate-limit": "^7.5.0",
+    "fs-extra": "^11.3.0",
+    "multer": "^1.4.5-lts.1",
+    "natural": "^8.0.1",
+    "node-cron": "^3.0.3",
+    "nodemon": "^3.1.9",
+    "puppeteer": "^24.4.0",
+    "stopword": "^3.1.4"
+  },
+  "name": "blog",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js",
+    "dev": "nodemon index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bin": {
+    "bloggen": "src/cli/cli.js"
+  },
+  "description": ""
+}
